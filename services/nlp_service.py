@@ -1,21 +1,29 @@
 import joblib
 
+CONTEXT_MAP = {
+    0: "NEUTRO",
+    1: "PESSOAL",
+    2: "AMBIGUO"
+}
+
 class NLPService:
-    def __init__(self, model_path="model.pkl", vectorizer_path="vectorizer.pkl"):
+    def __init__(self,
+                 model_path="context_model.pkl",
+                 vectorizer_path="context_vectorizer.pkl"):
         self.model = joblib.load(model_path)
         self.vectorizer = joblib.load(vectorizer_path)
 
-    def predict(self, text: str) -> dict:
+    def predict_context(self, text: str) -> dict:
         if not text:
-            return {"risk": False, "confidence": 0.0}
+            return {"context": "NEUTRO", "confidence": 0.0}
 
         X = self.vectorizer.transform([text])
-        prob = self.model.predict_proba(X)[0][1]
+        probs = self.model.predict_proba(X)[0]
+
+        label = probs.argmax()
+        confidence = probs[label]
 
         return {
-            "risk": prob > 0.6,
-            "confidence": float(prob)
+            "context": CONTEXT_MAP[label],
+            "confidence": float(confidence)
         }
-
-
-
