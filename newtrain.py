@@ -9,6 +9,22 @@ def definir_contexto(texto: str) -> int:
     # 2 = CONTEXTO AMBÍGUO
 
     # ===== INTERESSE PESSOAL CLARO =====
+    sinais_institucionais = [
+    r"programa de integridade",
+    r"unidade responsável",
+    r"diretrizes",
+    r"controle interno",
+    r"plano de integridade",
+    r"alta administração",
+    r"política de gestão de riscos",
+    r"órgão/entidade",
+    r"ministerio|secretaria|prefeitura|governo"
+    ]
+
+    for padrao in sinais_institucionais:
+        if re.search(padrao, texto):
+            return 0  # força NEUTRO
+
     sinais_pessoais = [
         r"\bmeu processo\b",
         r"\bmeus dados\b",

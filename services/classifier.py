@@ -1,45 +1,156 @@
-from services.regex_service import detect_regex
+from services.regex_service import RegexService
+from services.ner_service import extract_entities_dual
 from services.nlp_service import NLPService
 
-nlp = NLPService()
+regex_service = RegexService()
+nlp_service = NLPService()
+
+# =========================
+# CONFIGURAÇÕES
+# =========================
+EXPLICIT_TYPES = {"CPF", "RG", "EMAIL", "PHONE", "ADDRESS", "MATRICULA"}
+
+ABSTRACT_TERMS = {
+    "administração", "gestão", "integridade", "capacidades",
+    "política", "programa", "unidade", "plano",
+    "estado", "órgão", "entidade", "secretaria",
+    "departamento", "coordenação", "controle"
+}
+
+PERSONAL_TRIGGERS = [
+    "meu nome é",
+    "sou ",
+    "fui ",
+    "trabalhei",
+    "necessito",
+    "solicitei",
+    "recebi",
+    "bolsa",
+    "vaga de emprego"
+]
+
+# =========================
+# HELPERS
+# =========================
+def has_personal_context(text: str) -> bool:
+    text_lower = text.lower()
+    return any(t in text_lower for t in PERSONAL_TRIGGERS)
 
 
+def is_human_candidate(name: str) -> bool:
+    words = name.lower().split()
 
-def classify(text: str) -> dict:
-    regex_result = detect_regex(text)
+    # Muito curto para pessoa
+    if len(words) < 2:
+        return False
 
-    # 1️⃣ Dado pessoal explícito → NÃO PÚBLICO
-    if regex_result["has_personal_data"]:
-        return {
-            "classification": "NÃO PÚBLICO",
-            "reason": f"Dado pessoal explícito: {regex_result['matches']}",
-            "details": regex_result.get("ignored", []),
-            "confidence": 1.0
-        }
+    # Termos abstratos / institucionais
+    if any(w in ABSTRACT_TERMS for w in words):
+        return False
 
-    # 2️⃣ Houve descarte contextual (empresa / institucional)
-    if regex_result.get("ignored"):
-        return {
-            "classification": "PÚBLICO",
-            "reason": "Referências institucionais ou empresariais não caracterizam dado pessoal",
-            "details": regex_result["ignored"],
-            "confidence": 1.0
-        }
+    return True
 
-    # 3️⃣ NLP — só para ambiguidade
-    ctx = nlp.predict_context(text)
 
-    if ctx["context"] == "AMBIGUO":
-        return {
-            "classification": "REAVALIAÇÃO HUMANA",
-            "reason": "Contexto ambíguo identificado por NLP",
-            "confidence": ctx["confidence"]
-        }
-
-    # 4️⃣ Público padrão
+def build_result(classification, reason, confidence):
     return {
-        "classification": "PÚBLICO",
-        "reason": "Nenhum dado pessoal identificado",
-        "confidence": ctx["confidence"]
+        "classification": classification,
+        "reason": reason,
+        "confidence": round(float(confidence), 2)
     }
 
+# =========================
+# CLASSIFICADOR
+# =========================
+def classify(text: str) -> dict:
+    if not text or not text.strip():
+        return build_result("PÚBLICO", "Texto vazio", 1.0)
+
+    # =========================
+    # REGEX
+    # =========================
+    regex_result = regex_service.detect(text)
+
+    explicit = regex_result["explicit"]     # CPF, RG, EMAIL, etc
+    names = regex_result["names"]           # nomes detectados por regex
+    has_signature = regex_result["signature"]
+
+    # =========================
+    # NER (SpaCy)
+    # =========================
+    spacy_persons, spacy_orgs = extract_entities_dual(text)
+
+    regex_names = [n["value"] for n in names]
+
+    human_names = [
+        n for n in regex_names
+        if is_human_candidate(n) and n in spacy_persons
+    ]
+
+    # =========================
+    # 1️⃣ DADOS EXPLÍCITOS (DECISÃO AUTOMÁTICA)
+    # =========================
+    for m in explicit:
+        if m["type"] in EXPLICIT_TYPES:
+            return build_result(
+                "NÃO PÚBLICO",
+                f"Dado pessoal explícito: {m['type']}",
+                0.99
+            )
+
+    # =========================
+    # 2️⃣ CONTEXTO PESSOAL DIRETO
+    # =========================
+    if human_names and has_personal_context(text):
+        return build_result(
+            "NÃO PÚBLICO",
+            f"Dado pessoal em contexto pessoal direto: {human_names}",
+            0.99
+        )
+
+    # =========================
+    # 3️⃣ ASSINATURA (SINAL FORTE)
+    # =========================
+    if has_signature and human_names:
+        return build_result(
+            "NÃO PÚBLICO",
+            f"Nome humano em assinatura: {human_names}",
+            0.95
+        )
+
+    # =========================
+    # 4️⃣ NLP (DESEMPATE)
+    # =========================
+    if human_names:
+        nlp = nlp_service.predict_context(text)
+
+        if nlp["context"] == "PESSOAL":
+            return build_result(
+                "NÃO PÚBLICO",
+                f"Nome humano em contexto pessoal: {human_names}",
+                nlp["confidence"]
+            )
+
+        return build_result(
+            "REAVALIAÇÃO HUMANA",
+            f"Nome humano sem contexto pessoal explícito: {human_names}",
+            max(nlp["confidence"], 0.6)
+        )
+
+    # =========================
+    # 5️⃣ APENAS ENTIDADES INSTITUCIONAIS
+    # =========================
+    if spacy_orgs and not spacy_persons:
+        return build_result(
+            "PÚBLICO",
+            "Texto com entidades institucionais apenas",
+            0.95
+        )
+
+    # =========================
+    # 6️⃣ TEXTO LIMPO
+    # =========================
+    return build_result(
+        "PÚBLICO",
+        "Nenhum dado pessoal identificado",
+        1.0
+    )
