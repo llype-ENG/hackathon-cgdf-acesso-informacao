@@ -5,7 +5,7 @@ import regex as re
 # =========================
 # REGEX BÁSICOS
 # =========================
-
+#57 #68
 CPF_REGEX = re.compile(r'\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b')
 
 EMAIL_REGEX = re.compile(
