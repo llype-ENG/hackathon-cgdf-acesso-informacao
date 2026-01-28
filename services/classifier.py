@@ -1,174 +1,148 @@
 # -*- coding: utf-8 -*-
-from services.regex_service import RegexService
+from __future__ import annotations
 import re
+from typing import Tuple, List, Optional, Dict, Any
 
-# =========================
-# NER (SpaCy) - opcional com fallback
-# =========================
 try:
     import spacy
     _NLP_PT = spacy.load("pt_core_news_sm")
 except Exception:
-    _NLP_PT = None  # fallback: sem NER
+    _NLP_PT = None  # fallback sem NER
 
-def _extract_spacy_entities(text: str):
+from services.regex_service import RegexService
+
+
+class ClassificationService:
     """
-    Retorna (persons, orgs) usando SpaCy se disponível; caso contrário, ([], []).
+    Classificação (PÚBLICO / NÃO PÚBLICO / REAVALIAÇÃO HUMANA)
+    usando RegexService e, opcionalmente, SpaCy (se disponível).
     """
-    if not _NLP_PT or not text:
-        return [], []
-    doc = _NLP_PT(text)
-    persons = list({ent.text.strip() for ent in doc.ents if ent.label_ in ("PER", "PERSON")})
-    orgs    = list({ent.text.strip() for ent in doc.ents if ent.label_ == "ORG"})
-    return persons, orgs
 
-# =========================
-# INSTÂNCIAS DE SERVIÇO
-# =========================
-regex_service = RegexService()
+    EXPLICIT_TYPES = {"CPF", "RG", "EMAIL", "PHONE", "MATRICULA"}
 
-# =========================
-# CONFIGURAÇÕES
-# =========================
-EXPLICIT_TYPES = {"CPF", "RG", "EMAIL", "PHONE", "ADDRESS", "MATRICULA"}
+    PERSONAL_TRIGGERS = [
+        "me chamo", "meu nome é","Meu nome é"
+        "sou ", "fui ", "trabalhei", "necessito",
+        "solicitei", "recebi", "bolsa", "vaga de emprego",
+        "meu imóvel", "minha casa", "minha residência", "meu endereço",
+        "onde moro", "onde resido"
+    ]
 
-# Heurística de contexto pessoal (inclui “me chamo”)
-PERSONAL_TRIGGERS = [
-    "me chamo", "meu nome é",
-    "sou ", "fui ", "trabalhei", "necessito",
-    "solicitei", "recebi", "bolsa", "vaga de emprego",
-    "meu imóvel", "minha casa", "minha residência", "meu endereço",
-    "onde moro", "onde resido"
-]
+    _ME_CHAMO_REGEX = re.compile(
+        r"(?i)\bme\s+chamo\s+("
+        r"[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+"
+        r"(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+){0,4}"
+        r")"
+    )
 
-# =========================
-# HELPERS
-# =========================
-def _normalize(s: str) -> str:
-    if not s:
-        return ""
-    return re.sub(r"\s+", " ", s.replace("\xa0", " ")).strip()
+    def __init__(self, regex_service: RegexService | None = None, nlp=None):
+        self.regex_service = regex_service or RegexService()
+        self._nlp = nlp if nlp is not None else _NLP_PT
 
-def has_personal_context(text: str) -> bool:
-    tl = text.lower() if text else ""
-    return any(t in tl for t in PERSONAL_TRIGGERS)
+    @staticmethod
+    def _normalize(s: str) -> str:
+        if not s:
+            return ""
+        return re.sub(r"\s+", " ", s.replace("\xa0", " ")).strip()
 
-_ME_CHAMO_REGEX = re.compile(
-    r'(?i)\bme\s+chamo\s+('
-    r'[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+'
-    r'(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+){0,4}'
-    r')'
-)
+    @classmethod
+    def has_personal_context(cls, text: str) -> bool:
+        tl = text.lower() if text else ""
+        return any(t in tl for t in cls.PERSONAL_TRIGGERS)
 
-def extract_name_after_me_chamo(text: str):
-    """
-    Retorna o nome logo após “me chamo …” (se houver); caso contrário None.
-    """
-    if not text:
-        return None
-    m = _ME_CHAMO_REGEX.search(text)
-    return _normalize(m.group(1)) if m else None
+    @classmethod
+    def extract_name_after_me_chamo(cls, text: str) -> Optional[str]:
+        if not text:
+            return None
+        m = cls._ME_CHAMO_REGEX.search(text)
+        return cls._normalize(m.group(1)) if m else None
 
-def build_result(classification, reason, confidence):
-    return {
-        "classification": classification,
-        "reason": reason,
-        "confidence": round(float(confidence), 2)
-    }
+    def _extract_spacy_entities(self, text: str) -> Tuple[List[str], List[str]]:
+        if not self._nlp or not text:
+            return [], []
+        doc = self._nlp(text)
+        persons = list({ent.text.strip() for ent in doc.ents if ent.label_ in ("PER", "PERSON")})
+        orgs = list({ent.text.strip() for ent in doc.ents if ent.label_ == "ORG"})
+        return persons, orgs
 
-def classify(text: str) -> dict:
-    if not text or not text.strip():
-        return build_result("PÚBLICO", "Texto vazio", 1.0)
+    @staticmethod
+    def _build_result(classification: str, reason: str, confidence: float) -> Dict[str, Any]:
+        return {
+            "classification": classification,
+            "reason": reason,
+            "confidence": round(float(confidence), 2),
+        }
 
-    # =========================
-    # REGEX
-    # =========================
-    rx = regex_service.detect(text)
-    explicit = rx["explicit"]     # EMAIL, CPF, etc (e ADDRESS se houver)
-    signature = rx["signature"]
-    signature_name = rx["signature_name"]
-    regex_names = [n["value"] for n in rx["names"]]
+    def classify(self, text: str) -> Dict[str, Any]:
+        if not text or not text.strip():
+            return self._build_result("PÚBLICO", "Texto vazio", 1.0)
 
-    # =========================
-    # 1) ASSINATURA (SEMPRE NÃO PÚBLICO)
-    # =========================
-    if signature and signature_name:
-        return build_result(
-            "NÃO PÚBLICO",
-            f"Nome humano em assinatura: {signature_name}",
-            0.95
-        )
+        # Regex
+        rx = self.regex_service.detect(text)
+        explicit = rx["explicit"]
+        signature = rx["signature"]
+        signature_name = rx["signature_name"]
 
-    # =========================
-    # 2) DADOS EXPLÍCITOS
-    # =========================
-    for m in explicit:
-        t = m.get("type")
-        if t == "ADDRESS":
-            # Endereço só é pessoal se houver contexto pessoal
-            if has_personal_context(text):
-                return build_result(
-                    "NÃO PÚBLICO",
-                    "Endereço pessoal identificado",
-                    0.99
-                )
-            else:
-                # endereço institucional / contexto neutro → ignora como dado pessoal
-                continue
-        # demais dados explícitos sempre pessoais
-        if t in EXPLICIT_TYPES and t != "ADDRESS":
-            return build_result(
+        # 1) Assinatura ⇒ sempre NÃO PÚBLICO
+        if signature and signature_name:
+            return self._build_result(
                 "NÃO PÚBLICO",
-                f"Dado pessoal explícito: {t}",
+                f"Nome humano em assinatura: {signature_name}",
+                0.95
+            )
+
+        # 2) Dados explícitos (ADDRESS depende de contexto)
+        for m in explicit:
+            t = m.get("type")
+            if t == "ADDRESS":
+                if self.has_personal_context(text):
+                    return self._build_result("NÃO PÚBLICO", "Endereço pessoal identificado", 0.99)
+                else:
+                    continue
+            if t in self.EXPLICIT_TYPES:
+                return self._build_result("NÃO PÚBLICO", f"Dado pessoal explícito: {t}", 0.99)
+
+        # 3) "Me chamo …"
+        me_chamo_name = self.extract_name_after_me_chamo(text)
+        if me_chamo_name:
+            return self._build_result(
+                "NÃO PÚBLICO",
+                f"Nome humano em contexto pessoal direto (me chamo): {me_chamo_name}",
                 0.99
             )
 
-    # =========================
-    # 3) “ME CHAMO …”
-    # =========================
-    me_chamo_name = extract_name_after_me_chamo(text)
-    if me_chamo_name:
-        # “me chamo …” é forte indicativo de dado pessoal
-        return build_result(
-            "NÃO PÚBLICO",
-            f"Nome humano em contexto pessoal direto (me chamo): {me_chamo_name}",
-            0.99
-        )
-
-    # =========================
-    # 4) NER (SpaCy): pessoas reais
-    # =========================
-    spacy_persons, spacy_orgs = _extract_spacy_entities(text)
-
-    if spacy_persons:
-        if has_personal_context(text):
-            return build_result(
-                "NÃO PÚBLICO",
-                f"Nome humano em contexto pessoal: {spacy_persons}",
-                0.98
+        # 4) NER (SpaCy)
+        spacy_persons, spacy_orgs = self._extract_spacy_entities(text)
+        if spacy_persons:
+            if self.has_personal_context(text):
+                return self._build_result(
+                    "NÃO PÚBLICO",
+                    f"Nome humano em contexto pessoal: {spacy_persons}",
+                    0.98
+                )
+            return self._build_result(
+                "REAVALIAÇÃO HUMANA",
+                f"Nome humano sem contexto pessoal explícito: {spacy_persons}",
+                0.75
             )
-        # Sem contexto explícito → marcar para reavaliação
-        return build_result(
-            "REAVALIAÇÃO HUMANA",
-            f"Nome humano sem contexto pessoal explícito: {spacy_persons}",
-            0.75
-        )
 
-    # =========================
-    # 5) APENAS ENTIDADES INSTITUCIONAIS
-    # =========================
-    if spacy_orgs and not spacy_persons:
-        return build_result(
+        # 5) Apenas entidades institucionais
+        if spacy_orgs and not spacy_persons:
+            return self._build_result(
+                "PÚBLICO",
+                "Texto com entidades institucionais apenas",
+                0.95
+            )
+
+        # 6) Limpo
+        return self._build_result(
             "PÚBLICO",
-            "Texto com entidades institucionais apenas",
-            0.95
+            "Nenhum dado pessoal identificado",
+            1.0
         )
 
-    # =========================
-    # 6) TEXTO LIMPO
-    # =========================
-    return build_result(
-        "PÚBLICO",
-        "Nenhum dado pessoal identificado",
-        1.0
-    )
+
+# Wrapper opcional (compatibilidade com from services.classifier import classify)
+def classify(text: str):
+    svc = ClassificationService()
+    return svc.classify(text)
