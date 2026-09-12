@@ -1,25 +1,7 @@
-import pandas as pd
-from services.classifier import classify
+from app.infrastructure.excel_repository import ExcelClassificationRepository
 
-def processar_planilha(caminho):
-    df = pd.read_excel(caminho)
+_repository = ExcelClassificationRepository()
 
-    resultados = []
 
-    for _, row in df.iterrows():
-        texto = row["Texto Mascarado"]
-
-        resultado = classify(texto)
-
-        resultados.append({
-            "id": row["ID"],
-            "texto": texto,
-            "classificacao": resultado["classification"],
-            "motivo": resultado["reason"],
-            "confidence": resultado["confidence"]
-        })
-
-    df_saida = pd.DataFrame(resultados)
-    df_saida.to_excel("resultado_classificacao.xlsx", index=False)
-
-    return df_saida
+def processar_planilha(caminho: str, destino: str | None = None):
+    return _repository.processar_planilha(caminho, destino)
