@@ -1,6 +1,14 @@
+# Manipulação e preparação de dados
 pandas
 numpy
 scikit-learn
 regex
 joblib
 openpyxl
+
+# Treinamento e inferência do modelo NER
+# Instale uma build do PyTorch compatível com seu ambiente (CPU/CUDA).
+torch
+transformers==5.22.1
+accelerate==1.15.0
+seqeval==1.2.2
