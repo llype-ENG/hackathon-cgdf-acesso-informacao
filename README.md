@@ -1,123 +1,110 @@
-# BR-Access-NER
+BR-Access-NER
+Refatoração e evolução do projeto desenvolvido no Hackathon da CGDF — acesso à informação.
 
-**Identificação de possíveis dados pessoais em solicitações de acesso à informação (e-SIC).**
+O BR-Access-NER dá continuidade ao trabalho iniciado no Hackathon da Controladoria-Geral do Distrito Federal (CGDF), cujo contexto é o acesso à informação. Este repositório não representa um projeto criado do zero: ele organiza e refatora tecnicamente a solução do hackathon, separando o código em etapas mais claras e preparando a base para evolução, experimentação e manutenção.
 
-O BR-Access-NER é um projeto de Processamento de Linguagem Natural (PLN) que utiliza reconhecimento de entidades nomeadas (NER) para localizar trechos potencialmente relacionados a dados pessoais em textos de solicitações administrativas em português.
+A refatoração também incorpora uma frente de Processamento de Linguagem Natural (PLN) para reconhecer entidades que podem estar relacionadas a dados pessoais em solicitações administrativas de acesso à informação. A versão 1 utiliza NER (Named Entity Recognition) com BERTimbau e uma regra derivada para classificação binária de documentos.
+Escopo da v1: identificar e sinalizar possíveis dados pessoais para apoiar a triagem. O modelo não substitui análise humana, não realiza anonimização automática e não decide se uma informação deve ou não ser divulgada.
 
-O objetivo da versão 1 é oferecer uma ferramenta experimental de triagem: sinalizar solicitações que podem precisar de uma revisão mais cuidadosa. O modelo não substitui análise humana, não realiza anonimização automática e não determina, por si só, se uma informação deve ou não ser divulgada.
+Origem e objetivo da refatoração
+O ponto de partida deste trabalho foi o projeto desenvolvido no Hackathon da CGDF, relacionado ao tema de acesso à informação. A proposta desta etapa é transformar a implementação inicial em uma estrutura de projeto mais organizada e reproduzível, com responsabilidades separadas para:
+- preparação e transformação dos dados;
+- treinamento e avaliação do modelo de NER;
+- inferência sobre novas solicitações;
+- experimentos e relatórios separados do código reutilizável.
+Assim, o BR-Access-NER preserva o contexto do hackathon e desenvolve tecnicamente uma parte da solução, com foco na identificação de possíveis dados pessoais em textos de pedidos e-SIC. A refatoração não deve ser interpretada como uma validação institucional, homologação ou implantação oficial pela CGDF.
+Como funciona
+A versão 1 utiliza o BERTimbau Base (neuralmind/bert-base-portuguese-cased) ajustado para classificação de tokens no formato BIO, tarefa utilizada para reconhecimento de entidades nomeadas.
 
-## Como funciona
+O treinamento utiliza o conjunto EliMC/esic-ner, composto por documentos sintéticos em português e anotações de 13 tipos de entidade. O fluxo de preparação converte as anotações para BIO, divide os documentos em treino, validação e teste e prepara os arquivos para o fine-tuning.
 
-A versão 1 utiliza o **BERTimbau Base** (`neuralmind/bert-base-portuguese-cased`) ajustado para uma tarefa de classificação de tokens (NER).
+Na inferência, o modelo identifica entidades no texto. Em seguida, uma regra transforma as entidades previstas em uma classificação binária:
+- COM DADO PESSOAL: pelo menos uma entidade de uma das 11 categorias tratadas pelo projeto como potencialmente pessoais foi identificada;
+- SEM DADO PESSOAL IDENTIFICADO: nenhuma entidade dessas categorias foi identificada pelo modelo.
+A segunda classe não comprova que o documento esteja livre de dados pessoais. Ela indica somente que o modelo não identificou uma entidade contemplada pela regra binária.
+Resultados da versão 1
+Avaliação no conjunto de teste
+O conjunto de teste possui 975 documentos sintéticos, mantidos separados dos dados utilizados no treinamento e na validação.
+Métrica	Resultado
+Precision (entidade)	89,90%
+Recall (entidade)	91,07%
+F1 (entidade)	90,48%
+Acurácia por token	99,03%
 
-O treinamento utiliza o conjunto [EliMC/esic-ner](https://huggingface.co/datasets/EliMC/esic-ner), composto por documentos sintéticos em português e anotações de 13 tipos de entidade. Os textos são convertidos para o formato BIO, divididos por documento em treino, validação e teste, e usados no ajuste fino do modelo.
 
-Na etapa de inferência, as entidades identificadas são convertidas em uma classificação binária:
+A avaliação de NER considera a correspondência exata das entidades previstas com as anotações de referência. A acurácia por token não deve ser interpretada como F1 de entidades.
+Experimento exploratório com 99 solicitações
+Também foi executada uma inferência sobre uma amostra de 99 solicitações reais fornecida em uma planilha local:
+Classificação prevista	Quantidade	Percentual
+COM DADO PESSOAL	67	67,7%
+SEM DADO PESSOAL IDENTIFICADO	32	32,3%
+Total	99	100%
 
-- `COM DADO PESSOAL`: ao menos uma entidade pertencente às 11 categorias tratadas pelo projeto como potencialmente pessoais foi identificada.
-- `SEM DADO PESSOAL IDENTIFICADO`: nenhuma entidade dessas categorias foi identificada pelo modelo.
 
-A segunda classe não significa que o documento esteja comprovadamente livre de dados pessoais. Significa apenas que o modelo não identificou uma entidade contemplada pela regra de classificação.
+Essa amostra não possui rótulos de referência revisados por pessoas. Portanto, os valores representam a distribuição das previsões do modelo, não a quantidade de acertos. Não é possível calcular acurácia, precision, recall ou F1 para essas 99 solicitações.
 
-## Resultados da versão 1
+A análise exploratória indicou situações que merecem atenção em versões futuras, como números de processos e referências a estatísticas agregadas. Dependendo do contexto, esses trechos podem não identificar uma pessoa natural. Também existem solicitações cujo contexto está em anexos ou em descrições indiretas, o que pode limitar uma análise baseada apenas no texto disponível.
 
-### Avaliação no conjunto de teste
+Privacidade: a planilha utilizada nesse experimento e os arquivos de previsões derivados dela não fazem parte do repositório público. Textos de solicitações podem conter dados pessoais ou sensíveis, mesmo quando a planilha ou coluna de origem utiliza a expressão “texto mascarado”.
+Categorias reconhecidas
+O conjunto de treinamento contém 13 categorias:
 
-O conjunto de teste contém 975 documentos sintéticos que não foram usados no treinamento nem na validação.
+ORG_JURIDICA, NOME_PESSOA, ID_PROCESSUAL, CONTATO, DOC_PESSOAL, DADO_SAUDE, ENDERECO, DOC_EMPRESA, DOC_PROFISSIONAL, ID_VEICULO, QUASI_IDENTIFICADOR, DADO_FINANCEIRO e DATA_NASC.
 
-| Métrica | Resultado |
-|---|---:|
-| Precision (entidade) | **89,90%** |
-| Recall (entidade) | **91,07%** |
-| F1 (entidade) | **90,48%** |
-| Acurácia por token | 99,03% |
-
-A avaliação é feita no nível de entidade, com correspondência exata dos trechos, utilizando as anotações do conjunto de teste. A acurácia por token não deve ser confundida com a F1 de entidades.
-
-### Experimento exploratório com 99 solicitações
-
-O modelo também foi executado sobre uma amostra de 99 solicitações reais disponibilizada em uma planilha de teste:
-
-| Classificação prevista | Quantidade | Percentual |
-|---|---:|---:|
-| COM DADO PESSOAL | 67 | 67,7% |
-| SEM DADO PESSOAL IDENTIFICADO | 32 | 32,3% |
-| **Total** | **99** | **100%** |
-
-**Importante:** essa amostra não possui rótulos de referência revisados por pessoas. Portanto, os números acima representam apenas a distribuição das previsões. Não é possível calcular acurácia, precision, recall ou F1 para essas 99 solicitações, nem afirmar quantas classificações estão corretas.
-
-A inspeção exploratória também evidenciou pontos que merecem atenção em versões futuras: números de processos ou ocorrências podem ser sinalizados mesmo quando não está claro se identificam uma pessoa natural; por outro lado, pedidos que dependem de anexos ou que descrevem uma situação pessoal sem apresentar um identificador explícito podem não ser sinalizados. A amostra contém ainda um par de textos duplicados (IDs 11 e 92), ambos com a mesma previsão.
-
-## Categorias reconhecidas
-
-O conjunto de dados de treinamento contém as seguintes categorias:
-
-`ORG_JURIDICA`, `NOME_PESSOA`, `ID_PROCESSUAL`, `CONTATO`, `DOC_PESSOAL`, `DADO_SAUDE`, `ENDERECO`, `DOC_EMPRESA`, `DOC_PROFISSIONAL`, `ID_VEICULO`, `QUASI_IDENTIFICADOR`, `DADO_FINANCEIRO` e `DATA_NASC`.
-
-Na regra binária desta versão, `ORG_JURIDICA` e `DOC_EMPRESA` não acionam sozinhas a classe positiva. As outras 11 categorias são tratadas como potencialmente pessoais. Essa é uma convenção operacional baseada nas categorias do conjunto de treinamento, não uma interpretação jurídica automática da LGPD. O contexto é importante: por exemplo, um número de processo ou uma referência a dado de saúde em estatísticas agregadas não significa necessariamente que o texto identifique uma pessoa.
-
-## Estrutura do projeto
-
-A organização separa código reutilizável, experimentos e artefatos locais:
-
-```text
+Na regra binária da v1, ORG_JURIDICA e DOC_EMPRESA não acionam sozinhas a classe positiva. As outras 11 categorias são tratadas como potencialmente pessoais. Essa é uma convenção operacional baseada nas categorias do conjunto de treinamento, não uma interpretação jurídica automática da LGPD. O contexto de cada informação continua sendo relevante.
+Estrutura do projeto
+A organização busca separar código reutilizável, experimentos e artefatos locais:
 src/
-  preprocessing/   # preparação dos dados e conversão para BIO
-  training/        # treinamento e avaliação durante o ajuste
-  inference/       # carregamento do modelo e predição
+  preprocessing/   # consolidação e preparação dos dados; conversão para BIO e split
+  training/        # treinamento do modelo NER
+  inference/       # carregamento do modelo, reconhecimento e classificação
 experiments/       # inspeções, testes e experimentos reproduzíveis
-data/              # bases locais; não versionadas
-models/            # checkpoints e pesos locais; não versionados
+data/
+  raw/             # dados originais locais
+  external/        # conjuntos externos locais
+  interim/         # dados intermediários
+  processed/       # dados processados
+models/            # checkpoints e pesos locais
 reports/
   metrics/         # métricas selecionadas para documentação
-  predictions/     # previsões locais; não versionadas
-```
+  predictions/    # previsões locais, não versionadas
+  private/         # relatórios e amostras privadas, não versionados
+Os dados, checkpoints, planilhas e resultados locais não devem ser enviados ao GitHub. O .gitignore protege esses caminhos, mas é necessário conferir se algum arquivo já está sendo rastreado pelo Git antes de realizar um commit.
+Instalação e execução
+O projeto foi desenvolvido em Python e utiliza PyTorch e Transformers. A instalação do PyTorch deve ser compatível com o sistema operacional e, quando aplicável, com a versão do CUDA e a GPU disponíveis.
 
-Os diretórios e arquivos de dados, checkpoints e resultados privados são mantidos localmente e excluídos do Git por segurança e tamanho.
-
-## Execução local
-
-O projeto foi desenvolvido e testado em ambiente Python com PyTorch e Transformers. A instalação do PyTorch deve ser compatível com o sistema operacional, a versão do Python e, quando aplicável, a versão do CUDA instalada.
-
-Instale as dependências do projeto:
-
-```bash
+Crie e ative um ambiente virtual e instale as dependências:
+python -m venv .venv
+No Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
+Para ambientes com GPU NVIDIA, instale a versão do PyTorch apropriada ao seu ambiente seguindo o seletor oficial: https://pytorch.org/get-started/locally/ . A versão CUDA não deve ser presumida apenas pela presença de uma GPU NVIDIA.
+Executar a inferência
+Para executar src/inference/predict.py, disponibilize:
+1. o checkpoint treinado em models/bertimbau_esic_ner/;
+2. a planilha de entrada AMOSTRA_e-SIC.xlsx na raiz do projeto, com as colunas ID e Texto Mascarado.
+Execute:
+python -u src/inference/predict.py
+O script gera arquivos de classificação em reports/predictions/. Não publique a planilha de entrada nem as previsões derivadas dela.
 
-Para executar a inferência da amostra local, disponibilize o checkpoint em `models/bertimbau_esic_ner/` e a planilha de entrada `AMOSTRA_e-SIC.xlsx` na raiz do projeto. Em seguida:
-
-```bash
-python src/inference/predict.py
-```
-
-O script gera os resultados em `reports/predictions/`. **Não publique a planilha de entrada nem os arquivos de previsão derivados dela**, pois os textos podem conter dados pessoais ou sensíveis.
-
-O fluxo de preparação e treinamento está organizado nos scripts de `src/preprocessing/` e `src/training/`. Os experimentos correspondentes estão documentados em `experiments/`.
-
-## Limitações e uso responsável
-
-- O desempenho de 90,48% de F1 foi medido em documentos **sintéticos** do conjunto EliMC/esic-ner. Ele não demonstra o mesmo desempenho em solicitações reais do Fala.BR ou do e-SIC.
-- A amostra de 99 solicitações é exploratória e não possui rótulos de referência; não constitui uma avaliação quantitativa em dados reais.
-- O modelo analisa o texto fornecido. Anexos, imagens e documentos externos não são analisados pelo script de inferência descrito aqui.
-- A regra binária é sensível a erros de NER: uma entidade incorreta pode gerar um falso positivo, e uma entidade não identificada pode gerar um falso negativo.
+O fluxo completo de preparação e treinamento utiliza os scripts de src/preprocessing/ e src/training/. Os experimentos e verificações ficam em experiments/.
+Limitações e uso responsável
+- O F1 de 90,48% foi medido em documentos sintéticos do conjunto EliMC/esic-ner. Não demonstra o mesmo desempenho em solicitações reais do Fala.BR ou do e-SIC.
+- As 99 solicitações reais formam um experimento exploratório sem rótulos de referência; não constituem uma avaliação quantitativa de desempenho em dados reais.
+- A inferência descrita analisa o texto fornecido. Anexos, imagens e documentos externos não são analisados pelo script.
+- Uma entidade identificada incorretamente pode gerar falso positivo; uma entidade não identificada pode gerar falso negativo.
+- A regra binária não determina, por si só, se existe dado pessoal em sentido jurídico nem se uma solicitação deve ser restringida ou divulgada.
 - A saída não deve ser usada isoladamente para negar acesso à informação, decidir sobre divulgação, aplicar sanções ou afirmar que um documento está anonimizado.
-- Antes de qualquer uso operacional, é necessário avaliar o modelo com dados reais adequadamente protegidos e um conjunto de referência revisado por pessoas autorizadas.
-
-## Dados e atribuições
-
-- **EliMC/esic-ner:** conjunto de dados sintéticos em português, disponibilizado sob licença CC-BY-4.0: https://huggingface.co/datasets/EliMC/esic-ner
-- **BERTimbau Base:** modelo base `neuralmind/bert-base-portuguese-cased`: https://huggingface.co/neuralmind/bert-base-portuguese-cased
-
+- Antes de qualquer uso operacional, é necessária avaliação com dados reais adequadamente protegidos e um conjunto de referência construído por pessoas autorizadas.
+Fontes e atribuições
+- Projeto de origem: trabalho desenvolvido no Hackathon da CGDF, no contexto de acesso à informação. Este repositório apresenta uma refatoração e evolução técnica desse trabalho.
+- Conjunto de dados: EliMC/esic-ner, conjunto sintético em português disponibilizado sob licença CC-BY-4.0.
+- Modelo base: BERTimbau Base, de neuralmind.
 Consulte as páginas originais para os termos completos de uso e atribuição dos materiais de terceiros.
-
-## Licenças
-
-- **Código-fonte deste repositório:** MIT License.
-- **Checkpoint publicado do modelo:** CC-BY-4.0, com atribuição às fontes e aos componentes utilizados, conforme indicado no model card do checkpoint.
-
-As licenças do código e dos pesos do modelo são distintas. A licença de cada conjunto de dados de terceiros continua aplicável aos próprios dados.
-
-## Próximos passos
-
-A versão 1 estabelece uma linha de base funcional. As próximas melhorias devem priorizar a redução de falsos positivos em identificadores administrativos, a distinção entre informação pessoal e estatística agregada, a avaliação em dados reais com referência confiável e a calibração da regra de classificação binária.
+Licenças
+- Código-fonte deste repositório: MIT License.
+- Checkpoint publicado do modelo: CC-BY-4.0, com as atribuições indicadas no model card.
+As licenças do código, do checkpoint e dos materiais de terceiros são distintas. A licença do repositório não altera as condições aplicáveis aos conjuntos de dados ou modelos de terceiros.
+Próximos passos
+A v1 estabelece uma base técnica organizada a partir do projeto do Hackathon da CGDF. A evolução planejada inclui reduzir falsos positivos em identificadores administrativos, diferenciar melhor informação pessoal de estatísticas agregadas, ampliar a avaliação com dados reais protegidos e aprimorar a regra de classificação binária.
