@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Segredos e variáveis locais
+.env
+.env.*
+!.env.example
+
+# IDEs e sistema operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Dados locais (bases brutas, externas, intermediárias e processadas)
+/data/
+
+# Planilhas, exports tabulares e arquivos de amostras locais
+*.xlsx
+*.xls
+*.csv
+*.tsv
+AMOSTRA_e-SIC*
+
+# Modelos, checkpoints e pesos (mantenha-os no Hugging Face, não no Git)
+/models/
+*.safetensors
+pytorch_model*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# Resultados locais ou potencialmente sensíveis
+/reports/private/
+/reports/predictions/
+/reports/tables/
+*.log
+
+# Cache de ferramentas e modelos
+.cache/
+.huggingface/
+.transformers/
+wandb/
+mlruns/
+
+# Arquivos temporários
+*.tmp
+*.bak
+*.swp
